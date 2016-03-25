@@ -51,7 +51,7 @@ func (self *LimitCtx) Incr() error {
 // Initializes new LimiterCtx instance which then can be used
 // to increment and check ratelimit usage
 func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration) *LimitCtx {
-	perSeconds := per.Seconds()
+	perSeconds := int64(per.Seconds())
 	now := float64(time.Now().Unix())
 	expireAt := int64(now/perSeconds)*perSeconds + perSeconds
 	return &LimitCtx{
