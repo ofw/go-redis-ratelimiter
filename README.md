@@ -1,6 +1,10 @@
 # go-redis-ratelimiter
 Simple go ratelimiter library with redis backend
 
+# Docs
+
+https://godoc.org/github.com/oeegor/go-redis-ratelimiter
+
 # Usage
 
 ```go
