@@ -6,7 +6,6 @@ package ratelimiter
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
@@ -54,13 +53,13 @@ func (self *LimitCtx) Incr() error {
 func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration) *LimitCtx {
 	perSeconds := per.Seconds()
 	now := float64(time.Now().Unix())
-	expireAt := math.Floor(now/perSeconds)*perSeconds + perSeconds
+	expireAt := int64(now/perSeconds)*perSeconds + perSeconds
 	return &LimitCtx{
 		Key:       key,
 		Limit:     limit,
 		Per:       per,
 		RedisPool: redisPool,
-		ExpireAt:  int64(expireAt),
+		ExpireAt:  expireAt,
 	}
 }
 
