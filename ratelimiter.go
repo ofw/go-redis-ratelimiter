@@ -10,7 +10,7 @@ import (
 
 const expirationWindow = 60
 
-type LimitData struct {
+type LimitCtx struct {
 	// ported from here: http://flask.pocoo.org/snippets/70/
 	ExpireAt  int64
 	Key       string
@@ -20,15 +20,15 @@ type LimitData struct {
 	RedisPool *redis.Pool
 }
 
-func (self *LimitData) Remaining() int {
+func (self *LimitCtx) Remaining() int {
 	return self.Limit - self.Current
 }
 
-func (self *LimitData) Reached() bool {
+func (self *LimitCtx) Reached() bool {
 	return self.Current > self.Limit
 }
 
-func (self *LimitData) Incr() error {
+func (self *LimitCtx) Incr() error {
 
 	c := self.RedisPool.Get()
 	defer c.Close()
@@ -41,11 +41,11 @@ func (self *LimitData) Incr() error {
 	return err
 }
 
-func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration) *LimitData {
+func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration) *LimitCtx {
 	perSeconds := per.Seconds()
 	now := float64(time.Now().Unix())
 	expireAt := math.Floor(now/perSeconds)*perSeconds + perSeconds
-	return &LimitData{
+	return &LimitCtx{
 		Key:       key,
 		Limit:     limit,
 		Per:       per,
@@ -54,8 +54,8 @@ func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duratio
 	}
 }
 
-func CheckLimit(redisPool *redis.Pool, name string, limit int, period time.Duration) (*LimitData, error) {
-	limitData := BuildLimiter(redisPool, name, limit, period)
-	err := limitData.Incr()
-	return limitData, err
+func CheckLimit(redisPool *redis.Pool, name string, limit int, period time.Duration) (*LimitCtx, error) {
+	limitCtx := BuildLimiter(redisPool, name, limit, period)
+	err := limitCtx.Incr()
+	return limitCtx, err
 }
