@@ -1,3 +1,7 @@
+// Package ratelimiter provides possibility to check
+// rate limit usage by given resource with given allowed rate
+// and time interval. It uses redis as backend so can be used
+// to check ratelimit for distributed instances of your app.
 package ratelimiter
 
 import (
@@ -20,14 +24,18 @@ type LimitCtx struct {
 	RedisPool *redis.Pool
 }
 
+// Returns how many times resource can be used
+// before reaching limit
 func (self *LimitCtx) Remaining() int {
 	return self.Limit - self.Current
 }
 
+// Returns whether limit has been reached or not
 func (self *LimitCtx) Reached() bool {
 	return self.Current > self.Limit
 }
 
+// Increments rate limit counter
 func (self *LimitCtx) Incr() error {
 
 	c := self.RedisPool.Get()
@@ -41,6 +49,8 @@ func (self *LimitCtx) Incr() error {
 	return err
 }
 
+// Initializes new LimiterCtx instance which then can be used
+// to increment and check ratelimit usage
 func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration) *LimitCtx {
 	perSeconds := per.Seconds()
 	now := float64(time.Now().Unix())
@@ -54,7 +64,9 @@ func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duratio
 	}
 }
 
-func CheckLimit(redisPool *redis.Pool, name string, limit int, period time.Duration) (*LimitCtx, error) {
+// Shorthand function to increment resource usage
+// and to get LimiterCtx back. Wrapper around BuildLimiter and LimiterCtx.Incr
+func Incr(redisPool *redis.Pool, name string, limit int, period time.Duration) (*LimitCtx, error) {
 	limitCtx := BuildLimiter(redisPool, name, limit, period)
 	err := limitCtx.Incr()
 	return limitCtx, err
