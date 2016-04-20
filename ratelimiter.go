@@ -6,6 +6,7 @@ package ratelimiter
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -21,6 +22,7 @@ type LimitCtx struct {
 	Limit     int
 	Per       time.Duration
 	Current   int
+	Tries     int
 	RedisPool *redis.Pool
 }
 
@@ -35,39 +37,63 @@ func (self *LimitCtx) Reached() bool {
 	return self.Current > self.Limit
 }
 
+// Calculates and sets ExpireAt
+func (self *LimitCtx) setExpireAt() {
+	perSeconds := self.Per.Seconds()
+	now := float64(time.Now().Unix())
+	expireAt := math.Floor(now/perSeconds)*perSeconds + perSeconds
+	self.ExpireAt = int64(expireAt)
+}
+
 // Increments rate limit counter
 func (self *LimitCtx) Incr() error {
-
 	c := self.RedisPool.Get()
 	defer c.Close()
-	key := fmt.Sprintf("rl:%v:%v", self.Key, self.ExpireAt)
-	c.Send("MULTI")
-	c.Send("INCR", key)
-	c.Send("EXPIREAT", key, self.ExpireAt+expirationWindow)
-	r, err := redis.Ints(c.Do("EXEC"))
-	self.Current = r[0]
-	return err
+
+	for self.Tries > 0 {
+		log.Println("try to incr ratelimiter, tries:", self.Tries)
+		self.Tries--
+
+		key := fmt.Sprintf("rl:%v:%v", self.Key, self.ExpireAt)
+		c.Send("MULTI")
+		c.Send("INCR", key)
+		c.Send("EXPIREAT", key, self.ExpireAt+expirationWindow)
+		r, err := redis.Ints(c.Do("EXEC"))
+		if err != nil {
+			return err
+		}
+		self.Current = r[0]
+		if !self.Reached() {
+			return nil
+		}
+		sleep := self.ExpireAt - time.Now().Unix()
+		log.Println("ratelimit reached, try to sleep for:", sleep)
+		if sleep > 0 {
+			time.Sleep(time.Duration(sleep) * time.Second)
+		}
+		self.setExpireAt()
+	}
+	return nil
 }
 
 // Initializes new LimiterCtx instance which then can be used
 // to increment and check ratelimit usage
-func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration) *LimitCtx {
-	perSeconds := per.Seconds()
-	now := float64(time.Now().Unix())
-	expireAt := math.Floor(now/perSeconds)*perSeconds + perSeconds
-	return &LimitCtx{
+func BuildLimiter(redisPool *redis.Pool, key string, limit int, per time.Duration, tries int) *LimitCtx {
+	ctx := &LimitCtx{
 		Key:       key,
 		Limit:     limit,
 		Per:       per,
 		RedisPool: redisPool,
-		ExpireAt:  int64(expireAt),
+		Tries:     tries,
 	}
+	ctx.setExpireAt()
+	return ctx
 }
 
 // Shorthand function to increment resource usage
 // and to get LimiterCtx back. Wrapper around BuildLimiter and LimiterCtx.Incr
-func Incr(redisPool *redis.Pool, name string, limit int, period time.Duration) (*LimitCtx, error) {
-	limitCtx := BuildLimiter(redisPool, name, limit, period)
+func Incr(redisPool *redis.Pool, name string, limit int, period time.Duration, retries int) (*LimitCtx, error) {
+	limitCtx := BuildLimiter(redisPool, name, limit, period, retries)
 	err := limitCtx.Incr()
 	return limitCtx, err
 }
