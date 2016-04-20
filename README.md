@@ -25,8 +25,9 @@ func main() {
 		return c, err
 	}, 100)  // also set max connections to 100
 
-    // increment rate limit usage for given key that is allowed 10 requests per second
-    limitCtx, err := ratelimiter.Incr(redisPool, "mykey", 10, time.Second)
+    // increment rate limit usage for given key that is allowed 10 requests per second with one try
+    // Ratelimiter will try to acquire limit N tries using time.Sleep between tries
+    limitCtx, err := ratelimiter.Incr(redisPool, "mykey", 10, time.Second, 1)
 
     if err != nil {
         // do something
